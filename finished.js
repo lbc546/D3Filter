@@ -34,7 +34,7 @@
 
     // plot the trend line using gre scores, admit rates, axes limits, and
     // scaling + mapping functions
-    plotTrendLine(greScores, admissionRates, axesLimits, mapFunctions);
+    // plotTrendLine(greScores, admissionRates, axesLimits, mapFunctions);
   }
 
   // plot all the data points on the SVG
