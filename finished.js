@@ -2,7 +2,7 @@
 
 (function() {
 
-  let data = ""; // keep data in global scope
+  let data = "no data";
   let svgContainer = ""; // keep SVG reference in global scope
 
   // load data and make scatter plot after window loads
@@ -12,35 +12,72 @@
       .attr('width', 500)
       .attr('height', 500);
     // d3.csv is basically fetch but it can be be passed a csv file as a parameter
-    d3.csv("Admission_Predict.csv")
-      .then((csvData) => makeScatterPlot(csvData));
+    d3.csv("data.csv")
+      .then((data) => makeScatterPlot(data));
   }
 
   // make scatter plot with trend line
   function makeScatterPlot(csvData) {
-    data = csvData;
+    data = csvData // assign data as global variable
 
-    // get an array of gre scores and an array of chance of admit
-    let greScores = data.map((row) => parseInt(row["GRE Score"]));
-    let admissionRates = data.map((row) => parseFloat(row["Admit"]));
+    // get arrays of fertility rate data and life Expectancy data
+    let fertility_rate_data = data.map((row) => parseFloat(row["fertility_rate"]));
+    let life_expectancy_data = data.map((row) => parseFloat(row["life_expectancy"]));
 
-    let axesLimits = findMinMax(greScores, admissionRates);
+    // find data limits
+    let axesLimits = findMinMax(fertility_rate_data, life_expectancy_data);
 
-    // draw axes with ticks and return mapping and scaling functions
-    let mapFunctions = drawTicks(axesLimits);
+    // draw axes and return scaling + mapping functions
+    let mapFunctions = drawAxes(axesLimits, "fertility_rate", "life_expectancy");
 
-    // plot the data using the mapping and scaling functions
+    // plot data as points and add tooltip functionality
     plotData(mapFunctions);
 
-    // plot the trend line using gre scores, admit rates, axes limits, and
-    // scaling + mapping functions
-    // plotTrendLine(greScores, admissionRates, axesLimits, mapFunctions);
+    // draw title and axes labels
+    makeLabels();
+  }
+
+  // make title and axes labels
+  function makeLabels() {
+    svgContainer.append('text')
+      .attr('x', 100)
+      .attr('y', 40)
+      .style('font-size', '14pt')
+      .text("Countries by Life Expectancy and Fertility Rate");
+
+    svgContainer.append('text')
+      .attr('x', 130)
+      .attr('y', 490)
+      .style('font-size', '10pt')
+      .text('Fertility Rates (Avg Children per Woman)');
+
+    svgContainer.append('text')
+      .attr('transform', 'translate(15, 300)rotate(-90)')
+      .style('font-size', '10pt')
+      .text('Life Expectancy (years)');
   }
 
   // plot all the data points on the SVG
+  // and add tooltip functionality
   function plotData(map) {
+    // get population data as array
+    let pop_data = data.map((row) => +row["pop_mlns"]);
+    let pop_limits = d3.extent(pop_data);
+    // make size scaling function for population
+    let pop_map_func = d3.scaleLinear()
+      .domain([pop_limits[0], pop_limits[1]])
+      .range([3, 20]);
+
+    // mapping functions
     let xMap = map.x;
     let yMap = map.y;
+
+    // make tooltip
+    let div = d3.select("body").append("div")
+    .attr("class", "tooltip")
+    .style("opacity", 0);
+
+
 
     // append data to SVG and plot as points
     svgContainer.selectAll('.dot')
@@ -49,18 +86,32 @@
       .append('circle')
         .attr('cx', xMap)
         .attr('cy', yMap)
-        .attr('r', 3)
-        .attr('fill', "#4286f4");
+        .attr('r', (d) => pop_map_func(d["pop_mlns"]))
+        .attr('fill', "#4286f4")
+        // add tooltip functionality to points
+        .on("mouseover", (d) => {
+          div.transition()
+            .duration(200)
+            .style("opacity", .9);
+          div.html(d.location + "<br/>" + numberWithCommas(d["pop_mlns"]*1000000))
+            .style("left", (d3.event.pageX) + "px")
+            .style("top", (d3.event.pageY - 28) + "px");
+        })
+        .on("mouseout", (d) => {
+          div.transition()
+            .duration(500)
+            .style("opacity", 0);
+        });
   }
 
   // draw the axes and ticks
-  function drawTicks(limits) {
-    // return gre score from a row of data
-    let xValue = function(d) { return +d["GRE Score"]; }
+  function drawAxes(limits, x, y) {
+    // return x value from a row of data
+    let xValue = function(d) { return +d[x]; }
 
-    // function to scale gre score
+    // function to scale x value
     let xScale = d3.scaleLinear()
-      .domain([limits.greMin - 5, limits.greMax]) // give domain buffer room
+      .domain([limits.xMin - 0.5, limits.xMax + 0.5]) // give domain buffer room
       .range([50, 450]);
 
     // xMap returns a scaled x value from a row of data
@@ -72,12 +123,12 @@
       .attr('transform', 'translate(0, 450)')
       .call(xAxis);
 
-    // return Chance of Admit from a row of data
-    let yValue = function(d) { return +d.Admit}
+    // return y value from a row of data
+    let yValue = function(d) { return +d[y]}
 
-    // function to scale Chance of Admit
+    // function to scale y
     let yScale = d3.scaleLinear()
-      .domain([limits.admitMax, limits.admitMin - 0.05]) // give domain buffer
+      .domain([limits.yMax + 5, limits.yMin - 5]) // give domain buffer
       .range([50, 450]);
 
     // yMap returns a scaled y value from a row of data
@@ -98,126 +149,29 @@
     };
   }
 
-  // find min and max for GRE Scores and Chance of Admit
-  function findMinMax(greScores, admissionRates) {
+  // find min and max for arrays of x and y
+  function findMinMax(x, y) {
 
-    // get min/max gre scores
-    let greMin = d3.min(greScores);
-    let greMax = d3.max(greScores);
+    // get min/max x values
+    let xMin = d3.min(x);
+    let xMax = d3.max(x);
 
-    // round x-axis limits
-    greMax = Math.round(greMax*10)/10;
-    greMin = Math.round(greMin*10)/10;
-
-    // get min/max admit chance
-    let admitMin = d3.min(admissionRates);
-    let admitMax = d3.max(admissionRates);
-
-    // round y-axis limits to nearest 0.05
-    admitMax = Number((Math.ceil(admitMax*20)/20).toFixed(2));
-    admitMin = Number((Math.ceil(admitMin*20)/20).toFixed(2));
+    // get min/max y values
+    let yMin = d3.min(y);
+    let yMax = d3.max(y);
 
     // return formatted min/max data as an object
     return {
-      greMin : greMin,
-      greMax : greMax,
-      admitMin : admitMin,
-      admitMax : admitMax
+      xMin : xMin,
+      xMax : xMax,
+      yMin : yMin,
+      yMax : yMax
     }
   }
 
-  // plot trend a line on SVG
-  // greScores -> array of greScores
-  // admitRates -> array of Chance of Admit
-  // limits -> min/max data for GRE Scores and Chance of Admit
-  // scale -> scaling functions for x and y
-  function plotTrendLine(greScores, admitRates, limits, scale) {
-
-    // use linear regression code from previous lab to get coefficients
-    let leastSquareCoefficients = linearRegression(greScores, admitRates);
-    let a = leastSquareCoefficients.a;
-    let b = leastSquareCoefficients.b;
-
-    // find and initial and end points for the trend line
-    let x1 = limits.greMin;
-    let y1 = a*x1 + b;
-    let x2 = limits.greMax;
-    let y2 = a*x2 + b;
-    let trendData = [[x1,y1,x2,y2]];
-
-    // append trend line to SVG and assign attributes
-    let xScale = scale.xScale;
-    let yScale = scale.yScale;
-    let trendLine = svgContainer.selectAll('.trendLine')
-      .data(trendData)
-      .enter()
-      .append('line')
-      .attr('x1', function(d) { return  xScale(d[0]); })
-      .attr("y1", function(d) { return yScale(d[1]); })
-			.attr("x2", function(d) { return xScale(d[2]); })
-			.attr("y2", function(d) { return yScale(d[3]); })
-      .attr('stroke', 'black')
-      .attr('stroke-width', 2);
-  }
-
-  /*********************************************************
-                      Regression Functions
-*********************************************************/
-
-function linearRegression(independent, dependent)
-  {
-      let lr = {};
-
-      let independent_mean = arithmeticMean(independent);
-      let dependent_mean = arithmeticMean(dependent);
-      let products_mean = meanOfProducts(independent, dependent);
-      let independent_variance = variance(independent);
-
-      lr.a = (products_mean - (independent_mean * dependent_mean) ) / independent_variance;
-
-      lr.b = dependent_mean - (lr.a * independent_mean);
-
-      return lr;
-  }
-
-
-  function arithmeticMean(data)
-  {
-      let total = 0;
-
-      // note that incrementing total is done within the for loop
-      for(let i = 0, l = data.length; i < l; total += data[i], i++);
-
-      return total / data.length;
-  }
-
-
-  function meanOfProducts(data1, data2)
-  {
-      let total = 0;
-
-      // note that incrementing total is done within the for loop
-      for(let i = 0, l = data1.length; i < l; total += (data1[i] * data2[i]), i++);
-
-      return total / data1.length;
-  }
-
-
-  function variance(data)
-  {
-      let squares = [];
-
-      for(let i = 0, l = data.length; i < l; i++)
-      {
-          squares[i] = Math.pow(data[i], 2);
-      }
-
-      let mean_of_squares = arithmeticMean(squares);
-      let mean = arithmeticMean(data);
-      let square_of_mean = Math.pow(mean, 2);
-      let variance = mean_of_squares - square_of_mean;
-
-      return variance;
+  // format numbers
+  function numberWithCommas(x) {
+    return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   }
 
 })();
