@@ -3,32 +3,56 @@
 (function() {
 
   let data = "no data";
-  let svgContainer = ""; // keep SVG reference in global scope
+  let svgContainer = "";
+  // keep SVG reference in global scope
 
   // load data and make scatter plot after window loads
   window.onload = function() {
+    for(var i=1960; i<=2016; i++){
+    var select = document.getElementById("years");
+    var option = document.createElement("OPTION");
+    select.options.add(option);
+    option.text = i;
+    option.value = i;
+}
+
     svgContainer = d3.select('body')
       .append('svg')
       .attr('width', 500)
       .attr('height', 500);
     // d3.csv is basically fetch but it can be be passed a csv file as a parameter
-    d3.csv("data.csv")
-      .then((data) => makeScatterPlot(data));
+    d3.csv("gapminder.csv")
+      .then((data) => makeScatterPlot(data.filter(function(d){return d.year == 1960;})));
+
+      var elem = document.getElementById('years');
+      elem.addEventListener("change", onSelectChange);
+
+  function onSelectChange(){
+    var value = this.value;
+    d3.selectAll("circle").remove();
+    d3.selectAll("text").remove();
+    d3.selectAll("g").remove();
+    filteredData(value);
+  }
   }
 
+function filteredData(value) {
+  d3.csv("gapminder.csv")
+    .then((data) => makeScatterPlot(data.filter(function(d){return d.year == value;})));
+}
   // make scatter plot with trend line
   function makeScatterPlot(csvData) {
     data = csvData // assign data as global variable
-
+    console.log(data);
     // get arrays of fertility rate data and life Expectancy data
-    let fertility_rate_data = data.map((row) => parseFloat(row["fertility_rate"]));
+    let fertility_rate_data = data.map((row) => parseFloat(row["fertility"]));
     let life_expectancy_data = data.map((row) => parseFloat(row["life_expectancy"]));
 
     // find data limits
     let axesLimits = findMinMax(fertility_rate_data, life_expectancy_data);
 
     // draw axes and return scaling + mapping functions
-    let mapFunctions = drawAxes(axesLimits, "fertility_rate", "life_expectancy");
+    let mapFunctions = drawAxes(axesLimits, "fertility", "life_expectancy");
 
     // plot data as points and add tooltip functionality
     plotData(mapFunctions);
@@ -61,7 +85,7 @@
   // and add tooltip functionality
   function plotData(map) {
     // get population data as array
-    let pop_data = data.map((row) => +row["pop_mlns"]);
+    let pop_data = data.map((row) => +row["population"]);
     let pop_limits = d3.extent(pop_data);
     // make size scaling function for population
     let pop_map_func = d3.scaleLinear()
@@ -86,16 +110,21 @@
       .append('circle')
         .attr('cx', xMap)
         .attr('cy', yMap)
-        .attr('r', (d) => pop_map_func(d["pop_mlns"]))
+        .attr('r', (d) => pop_map_func(d["population"]))
+        .style("opacity", 0.5)
         .attr('fill', "#4286f4")
         // add tooltip functionality to points
         .on("mouseover", (d) => {
           div.transition()
             .duration(200)
             .style("opacity", .9);
-          div.html(d.location + "<br/>" + numberWithCommas(d["pop_mlns"]*1000000))
+          div.html("Fertility: " + numberWithCommas(d["fertility"]) + "<br/>" +
+          "Life Expectancy: " + numberWithCommas(d["life_expectancy"]) + "<br/>" +
+          "Population:" +  numberWithCommas(d["population"]) + "<br/>" +
+          "Year: " +  numberWithCommas(d["year"]) + "<br/>" +
+          "Country: " + d.country )
             .style("left", (d3.event.pageX) + "px")
-            .style("top", (d3.event.pageY - 28) + "px");
+            .style("top", (d3.event.pageY - 70) + "px");
         })
         .on("mouseout", (d) => {
           div.transition()
@@ -104,6 +133,11 @@
         });
   }
 
+  d3.selection.prototype.moveToFront = function() {
+  		  return this.each(function() {
+  			this.parentNode.appendChild(this);
+  		  });
+  		};
   // draw the axes and ticks
   function drawAxes(limits, x, y) {
     // return x value from a row of data
